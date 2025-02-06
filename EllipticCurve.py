@@ -1,21 +1,44 @@
 import math
-import random
 
 
 class EllipticCurve:
     def __init__(self, p, a, b):
         self.p = p
-        self.a = a
-        self.b = b
-        if (4 * pow(a, 3, p) + 27 * pow(b, 2, p)) % p == 0:
+        self.a = a % p
+        self.b = b % p
+        # Проверка условия 4a³ + 27b² ≠ 0 mod p
+        if (4 * pow(self.a, 3, p) + 27 * pow(self.b, 2, p)) % p == 0:
             raise ValueError("Кривая не удовлетворяет условию 4a³ + 27b² ≠ 0 mod p.")
 
     def is_on_curve(self, point):
-        if point == 'inf':
+        if isinstance(point, ECPointInf):
             return True
         x, y = point
         return (pow(y, 2, self.p) - (pow(x, 3, self.p) + self.a * x + self.b) % self.p) % self.p == 0
 
+
+class ECPointInf:
+    """Класс для бесконечно удаленной точки"""
+    def __init__(self, curve):
+        self.curve = curve
+
+    def __add__(self, other):
+        return other
+
+    def __radd__(self, other):
+        return other
+
+    def __mul__(self, other):
+        return ECPointInf(self.curve)
+
+    def __rmul__(self, other):
+        return self * other
+
+    def __eq__(self, other):
+        return isinstance(other, ECPointInf)
+
+    def __repr__(self):
+        return "inf"
 
 class ECPoint:
     def __init__(self, curve, x, y):
@@ -25,24 +48,25 @@ class ECPoint:
         if not curve.is_on_curve((self.x, self.y)):
             raise ValueError("Точка не принадлежит кривой.")
 
-    def __eq__(self, other):
-        if other == 'inf':
-            return False
-        return self.x == other.x and self.y == other.y and self.curve == other.curve
-
     def __add__(self, other):
-        if other == 'inf':
+        if isinstance(other, ECPointInf):
             return self
-        if self == 'inf':
-            return other
-        if self.x == other.x and (self.y + other.y) % self.curve.p == 0:
-            return 'inf'
-        if self != other:
-            m = ((other.y - self.y) * mod_inverse(other.x - self.x, self.curve.p)) % self.curve.p
-        else:
-            m = ((3 * pow(self.x, 2, self.curve.p) + self.curve.a) * mod_inverse(2 * self.y,
-                                                                                 self.curve.p)) % self.curve.p
-        x3 = (pow(m, 2, self.curve.p) - self.x - other.x) % self.curve.p
+        # Случаи сложения точек
+        if self.x == other.x:
+            if (self.y + other.y) % self.curve.p == 0:
+                return ECPointInf(self.curve)
+            else:
+                # Удвоение точки
+                return self.double()
+        # Формулы сложения
+        m = ((other.y - self.y) * mod_inverse(other.x - self.x, self.curve.p)) % self.curve.p
+        x3 = (m**2 - self.x - other.x) % self.curve.p
+        y3 = (m * (self.x - x3) - self.y) % self.curve.p
+        return ECPoint(self.curve, x3, y3)
+
+    def double(self):
+        m = ((3 * self.x**2 + self.curve.a) * mod_inverse(2 * self.y, self.curve.p)) % self.curve.p
+        x3 = (m**2 - 2 * self.x) % self.curve.p
         y3 = (m * (self.x - x3) - self.y) % self.curve.p
         return ECPoint(self.curve, x3, y3)
 
@@ -50,12 +74,14 @@ class ECPoint:
         return self + other
 
     def __mul__(self, scalar):
-        result = 'inf'
+        if scalar == 0:
+            return ECPointInf(self.curve)
+        result = ECPointInf(self.curve)
         current = self
         while scalar > 0:
             if scalar % 2 == 1:
                 result = result + current
-            current = current + current
+            current = current.double()
             scalar = scalar // 2
         return result
 
@@ -67,6 +93,7 @@ class ECPoint:
 
 
 def mod_inverse(a, p):
+    a %= p
     g, x, y = extended_gcd(a, p)
     if g != 1:
         raise ValueError("Обратный элемент не существует.")
@@ -126,7 +153,7 @@ def tonelli_shanks(n, p):
 
 
 def find_points(curve):
-    points = ['inf']
+    points = [ECPointInf(curve)]
     for x in range(curve.p):
         rhs = (pow(x, 3, curve.p) + curve.a * x + curve.b) % curve.p
         if legendre_symbol(rhs, curve.p) == 1:
@@ -142,20 +169,66 @@ def naive_order(curve):
     return len(find_points(curve))
 
 
-def bsgs(curve, P, Q):
-    m = int(math.ceil(math.sqrt(curve.p)))
-    table = {}
+def point_neg(P):
+    """
+    Возвращает отрицание точки P.
+    Для точки в бесконечности возвращается она же.
+    """
+    if isinstance(P, ECPointInf):
+        return P
+    return ECPoint(P.curve, P.x, (-P.y) % P.curve.p)
+
+
+def bsgs(curve, P, Q, n=None):
+    """
+    Решает задачу дискретного логарифма в циклической подгруппе,
+    порождённой точкой P, то есть ищет такое целое d, что
+        d * P = Q.
+    Если порядок n подгруппы не задан (n=None), то он вычисляется наивно.
+
+    Алгоритм:
+      1. Выбирается m = ceil(sqrt(n)).
+      2. Вычисляются baby-шаги: для j от 0 до m-1 сохраняется значение j*P.
+      3. Выполняются giant-шаги: ищется такое i, что
+             Q - i*(m*P)
+         встречается среди baby-шагов.
+         Тогда d = i*m + j.
+    """
+    # Если порядок n не задан, вычисляем его наивно (подойдёт для небольших кривых).
+    if n is None:
+        current = P
+        n = 1
+        while not isinstance(current, ECPointInf):
+            current = current + P
+            n += 1
+            # Ограничение для предотвращения зацикливания на больших группах.
+            if n > curve.p + 5:
+                break
+
+    m = int(math.ceil(math.sqrt(n)))
+
+    # Baby-шаги: для j от 0 до m-1 вычисляем j * P.
+    baby_steps = {}
     for j in range(m):
         point = j * P
-        table[(point.x, point.y)] = j
-    m_point = m * P
-    current = Q
-    for k in range(m):
-        if (current.x, current.y) in table:
-            j = table[(current.x, current.y)]
-            return (m * k - j) % curve.p
-        current = current + m_point
-    return None
+        key = 'inf' if isinstance(point, ECPointInf) else (point.x, point.y)
+        baby_steps[key] = j
+
+    mP = m * P
+    neg_mP = point_neg(mP)
+
+    # Giant-шаги: ищем i от 0 до m-1, для которого
+    # Q - i*(mP) встречается в baby_steps.
+    gamma = Q
+    for i in range(m):
+        key = 'inf' if isinstance(gamma, ECPointInf) else (gamma.x, gamma.y)
+        if key in baby_steps:
+            j = baby_steps[key]
+            d = i * m + j
+            return d % n  # возвращаем наименьшее неотрицательное решение
+        gamma = gamma + neg_mP  # эквивалентно: gamma = gamma - mP
+
+    return None  # если решение не найдено
 
 
 def curve_order(curve, max_trials=10):
@@ -181,9 +254,9 @@ def find_prime_subgroups(curve):
     subgroups = []
     for p in prime_factors:
         for point in find_points(curve):
-            if point != 'inf':
+            if not isinstance(point, ECPointInf):
                 candidate = (order // p) * point
-                if candidate == 'inf':
+                if isinstance(candidate, ECPointInf):
                     subgroups.append(p)
                     break
     return subgroups
