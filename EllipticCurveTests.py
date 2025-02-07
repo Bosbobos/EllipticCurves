@@ -1,4 +1,7 @@
-from EllipticCurve import *
+from EllipticCurve import EllipticCurve
+from ECPoint import *
+from ECPointInf import ECPointInf
+from Tools import *
 import pytest
 
 
