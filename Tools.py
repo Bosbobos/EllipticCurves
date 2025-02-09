@@ -157,7 +157,7 @@ def curve_order(curve, max_trials=10):
     return len(points)
 
 
-def find_prime_subgroups(curve):
+def find_prime_subgroups_orders(curve):
     order = curve_order(curve)
     factors = {}
     n = order
@@ -179,3 +179,72 @@ def find_prime_subgroups(curve):
                     subgroups.append(p)
                     break
     return subgroups
+
+
+def find_prime_subgroups(curve):
+    """
+    Нахождение простых подгрупп кривой.
+    Возвращает список подгрупп, каждая из которых состоит из точек данной кривой,
+    которые соответствуют простым делителям порядка кривой.
+    """
+    order = curve_order(curve)
+    factors = {}
+    n = order
+    i = 2
+    while i * i <= n:
+        while n % i == 0:
+            factors[i] = factors.get(i, 0) + 1
+            n = n // i
+        i += 1
+    if n > 1:
+        factors[n] = 1
+    prime_factors = list(factors.keys())
+
+    subgroups = []
+    for p in prime_factors:
+        if p == order:  # Исключаем порядок, равный самому порядку кривой, если он не является простым
+            continue
+        subgroup = [ECPointInf(curve)]  # Подгруппа обязательно включает точку в бесконечности
+        for point in find_points(curve):
+            if isinstance(point, ECPointInf):
+                continue
+            if point_order(point) == p:
+                subgroup.append(point)
+        if len(subgroup) == p:  # В подгруппе должно быть p точек, включая точку в бесконечности
+            subgroups.append(subgroup)
+    return subgroups
+
+
+def point_order(P):
+    """
+    Нахождение порядка точки P на эллиптической кривой.
+    Порядок точки - минимальное целое число k, такое что k * P = O (точка в бесконечности).
+    Если точка P имеет бесконечный порядок, возвращается None.
+    """
+    if isinstance(P, ECPointInf):
+        return 1
+    original = P
+    k = 1
+    while True:
+        P = P + original
+        k += 1
+        if isinstance(P, ECPointInf):
+            return k
+#        if k > 10000:  # Ограничение для предотвращения бесконечных циклов
+#           break
+    return None
+
+
+def point_of_order(curve, order):
+    """
+    Нахождение точки заданного порядка на кривой.
+    Возвращает точку P на кривой, такую что P * order = O.
+    Если такой точки не существует, возвращает None.
+    """
+    points = find_points(curve)
+    for point in points:
+        if isinstance(point, ECPointInf):
+            continue
+        if point_order(point) == order:
+            return point
+    return None

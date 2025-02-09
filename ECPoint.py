@@ -25,6 +25,9 @@ class ECPoint:
         return ECPoint(self.curve, x3, y3)
 
     def double(self):
+        if (self.y % self.curve.p == 0):
+            return ECPointInf(self.curve)
+
         m = ((3 * self.x**2 + self.curve.a) * mod_inverse(2 * self.y, self.curve.p)) % self.curve.p
         x3 = (m**2 - 2 * self.x) % self.curve.p
         y3 = (m * (self.x - x3) - self.y) % self.curve.p
@@ -42,6 +45,8 @@ class ECPoint:
             if scalar % 2 == 1:
                 result = result + current
             current = current.double()
+            if isinstance(current, ECPointInf):
+                break
             scalar = scalar // 2
         return result
 

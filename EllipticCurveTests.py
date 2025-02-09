@@ -170,3 +170,18 @@ def test_repr():
     inf_point = ECPointInf(curve)
     assert repr(P) == f"({P.x}, {P.y})"
     assert repr(inf_point) == "inf"
+
+
+@pytest.mark.parametrize(
+    'p, a, b', [
+        (7, -2, 1)
+    ]
+)
+def test_analysis(p, a, b):
+    curve = EllipticCurve(p, a, b)
+    points = find_points(curve)
+    groups = find_prime_subgroups(curve)
+    order = curve_order(curve)
+    p1_order = point_order(points[0])
+    p2_order = point_order(points[1])
+    assert len(points) == 12
