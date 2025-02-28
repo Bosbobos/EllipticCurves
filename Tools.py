@@ -230,8 +230,6 @@ def point_order(P):
         k += 1
         if isinstance(P, ECPointInf):
             return k
-#        if k > 10000:  # Ограничение для предотвращения бесконечных циклов
-#           break
     return None
 
 

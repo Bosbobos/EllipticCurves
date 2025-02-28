@@ -59,6 +59,15 @@ class ECPoint:
     def __neg__(self):
         return point_neg(self)
 
+def point_neg(P):
+    """
+    Возвращает отрицание точки P.
+    Для точки в бесконечности возвращается она же.
+    """
+    if isinstance(P, ECPointInf):
+        return P
+    return ECPoint(P.curve, P.x, (-P.y) % P.curve.p)
+
 
 def mod_inverse(a, p):
     a %= p
@@ -88,11 +97,3 @@ def extended_gcd(a, b):
         g, y, x = extended_gcd(b % a, a)
         return (g, x - (b // a) * y, y)
 
-def point_neg(P):
-    """
-    Возвращает отрицание точки P.
-    Для точки в бесконечности возвращается она же.
-    """
-    if isinstance(P, ECPointInf):
-        return P
-    return ECPoint(P.curve, P.x, (-P.y) % P.curve.p)
