@@ -1,12 +1,16 @@
 from ECPoint import ECPoint
 from ECPointInf import ECPointInf
 from EllipticCurve import EllipticCurve
-from Tools import find_points, naive_order, find_prime_subgroups, curve_order, point_order, point_of_order
+from Tools import find_points, is_prime, find_prime_subgroups, curve_order, point_order, point_of_order
 
 
 def introduce_curve():
     # Ввод данных кривой в одной строке
     p, a, b = map(int, input("Введите параметры p, a, b через пробел: ").split())
+
+    if not is_prime(p):
+        print('p должен быть простым')
+        return
 
     # Создание объекта кривой
     curve = EllipticCurve(p, a, b)
